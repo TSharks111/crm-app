@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Simple CRM</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f9f9f9; }
+        h1 { color: #333; }
+        h2 { color: #555; }
+        table { width: 100%; border-collapse: collapse; background-color: #fff; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); margin-bottom: 20px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #4CAF50; color: white; }
+        tr:nth-child(even) { background-color: #f2f2f2; }
+        button { padding: 8px 12px; margin: 0 5px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        button:hover { opacity: 0.85; }
+        #leadForm button, #editForm button[type="submit"], #taskForm button[type="submit"] { background-color: #4CAF50; color: white; }
+        #cancelEdit, #cancelTask { background-color: #f44336; color: white; }
+        input, select { padding: 8px; margin: 5px 0; width: 220px; border: 1px solid #ddd; border-radius: 4px; }
+        .converted { background-color: #dff0d8; }
+        .unconverted { background-color: #f2dede; }
+        .agent-1 { background-color: #e3f2fd; }
+        .agent-2 { background-color: #f3e5f5; }
+        .agent-3 { background-color: #e0f7fa; }
+        #summary { margin-bottom: 20px; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <h1>Simple CRM</h1>
+    <div id="summary"></div>
+    <h2>Add Lead</h2>
+    <form id="leadForm">
+        <input type="text" name="name" placeholder="Name" required><br><br>
+        <input type="email" name="email" placeholder="Email"><br><br>
+        <input type="text" name="phone" placeholder="Phone"><br><br>
+        <select name="status">
+            <option value="New">New</option>
+            <option value="Contacted">Contacted</option>
+            <option value="Closed">Closed</option>
+        </select><br><br>
+        <button type="submit">Add Lead</button>
+    </form>
+    <h2>Edit Lead</h2>
+    <form id="editForm" style="display: none;">
+        <input type="hidden" name="id">
+        <input type="text" name="name" placeholder="Name" required><br><br>
+        <input type="email" name="email" placeholder="Email"><br><br>
+        <input type="text" name="phone" placeholder="Phone"><br><br>
+        <select name="status">
+            <option value="New">New</option>
+            <option value="Contacted">Contacted</option>
+            <option value="Closed">Closed</option>
+        </select><br><br>
+        <button type="submit">Update Lead</button>
+        <button type="button" id="cancelEdit">Cancel</button>
+    </form>
+    <h2>Leads</h2>
+    <input type="text" id="searchInput" placeholder="Search leads..." onkeyup="searchLeads()"><br><br>
+    <button onclick="window.location.href='/api/leads/export'">Export Leads</button>
+    <button onclick="window.location.href='/api/converted/export'">Export Converted</button>
+    <button onclick="window.location.href='/api/unconverted/export'">Export Unconverted</button><br><br>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Status</th>
+                <th>Agent</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="leadsTable"></tbody>
+    </table>
+    <h2>Tasks</h2>
+    <form id="taskForm" style="display: none;">
+        <input type="hidden" name="lead_id">
+        <input type="text" name="description" placeholder="Task Description" required><br><br>
+        <input type="date" name="due_date" required><br><br>
+        <button type="submit">Add Task</button>
+        <button type="button" id="cancelTask">Cancel</button>
+    </form>
+    <table>
+        <thead>
+            <tr>
+                <th>Lead Name</th>
+                <th>Description</th>
+                <th>Due Date</th>
+                <th>Outcome</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="tasksTable"></tbody>
+    </table>
+    <script src="script.js"></script>
+</body>
+</html>
