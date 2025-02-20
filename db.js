@@ -1,9 +1,24 @@
 const { Pool } = require('pg');
 
-// Use Render's internal URL (replace with your actual URL)
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL || 'postgres://user:password@host:port/dbname',
-    ssl: { rejectUnauthorized: false } // Required for Render
+    connectionString: process.env.DATABASE_URL || 'postgresql://crm_db_0b6i_user:Xw6uEiRHIS3YK64iNnq7CRxTwFtwE3I0@dpg-curfjul6l47c73ccid70-a.oregon-postgres.render.com/crm_db_0b6i',
+    ssl: { rejectUnauthorized: false },
+    max: 10, // Max connections
+    idleTimeoutMillis: 30000, // Close idle connections after 30s
+    connectionTimeoutMillis: 10000, // Increase to 10s for slower networks
+    keepAlive: true // Enable TCP keep-alive to prevent drops
+});
+
+// Handle connection errors and retry
+pool.on('error', (err, client) => {
+    console.error('Unexpected error on idle client:', err.message);
+    setTimeout(() => {
+        client.release();
+        pool.connect((err) => {
+            if (err) console.error('Reconnection failed:', err.message);
+            else console.log('Reconnected to PostgreSQL database.');
+        });
+    }, 5000); // Retry after 5s
 });
 
 pool.connect((err) => {
@@ -55,17 +70,22 @@ pool.query(`
     else console.log('Tables created or already exist');
 });
 
-// Seed agents if empty
-pool.query('SELECT COUNT(*) FROM agents', (err, res) => {
-    if (err) console.error('Error checking agents:', err.message);
-    else if (parseInt(res.rows[0].count) === 0) {
-        pool.query(`
-            INSERT INTO agents (name) VALUES ('Agent 1'), ('Agent 2'), ('Agent 3');
-        `, (err) => {
-            if (err) console.error('Error seeding agents:', err.message);
-            else console.log('Seeded initial agents');
-        });
-    }
-});
+// Seed agents if empty with retry logic
+function seedAgents() {
+    pool.query('SELECT COUNT(*) FROM agents', (err, res) => {
+        if (err) {
+            console.error('Error checking agents:', err.message);
+            setTimeout(seedAgents, 5000); // Retry after 5s
+        } else if (parseInt(res.rows[0].count) === 0) {
+            pool.query(`
+                INSERT INTO agents (name) VALUES ('Agent 1'), ('Agent 2'), ('Agent 3');
+            `, (err) => {
+                if (err) console.error('Error seeding agents:', err.message);
+                else console.log('Seeded initial agents');
+            });
+        }
+    });
+}
+seedAgents();
 
 module.exports = pool;
