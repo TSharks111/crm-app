@@ -19,7 +19,7 @@ app.use(express.urlencoded({ extended: true }));
 let lastAgentIndex = -1;
 
 const auth = new google.auth.GoogleAuth({
-    keyFile: './crm-service-key.json',
+    credentials: JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS), // Use env variable
     scopes: ['https://www.googleapis.com/auth/spreadsheets']
 });
 const sheets = google.sheets({ version: 'v4', auth });
