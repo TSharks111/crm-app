@@ -4,6 +4,7 @@ const db = require('./db');
 const ExcelJS = require('exceljs');
 const basicAuth = require('express-basic-auth'); // Add this
 const app = express();
+const fs = require('fs'); // Add this for file reading
 const port = 3000;
 
 app.use(express.static('public'));
@@ -17,14 +18,24 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 let lastAgentIndex = -1;
+let credentials;
+if (process.env.GOOGLE_SHEETS_CREDENTIALS) {
+    credentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
+} else {
+    try {
+        credentials = JSON.parse(fs.readFileSync('./crm-service-key.json', 'utf8'));
+    } catch (err) {
+        console.error('Error loading local credentials file:', err.message);
+        throw new Error('GOOGLE_SHEETS_CREDENTIALS env variable or crm-service-key.json file required');
+    }
+}
 
 const auth = new google.auth.GoogleAuth({
-    credentials: JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS), // Use env variable
+    credentials,
     scopes: ['https://www.googleapis.com/auth/spreadsheets']
 });
 const sheets = google.sheets({ version: 'v4', auth });
 const spreadsheetId = '1pnVbXjNrjs8t7HqUMk3PSAXRoJkOs4eBM_mr-bY9BXQ';
-
 async function pullLeadsFromSheets() {
     try {
         const res = await sheets.spreadsheets.values.get({
