@@ -1,5 +1,7 @@
 const express = require('express');
+const { google } = require('googleapis');
 const db = require('./db');
+const ExcelJS = require('exceljs');
 const app = express();
 const port = 3000;
 
@@ -8,6 +10,56 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 let lastAgentIndex = -1;
+
+const auth = new google.auth.GoogleAuth({
+    keyFile: './crm-service-key.json',
+    scopes: ['https://www.googleapis.com/auth/spreadsheets']
+});
+const sheets = google.sheets({ version: 'v4', auth });
+const spreadsheetId = '1pnVbXjNrjs8t7HqUMk3PSAXRoJkOs4eBM_mr-bY9BXQ';
+
+async function pullLeadsFromSheets() {
+    try {
+        const res = await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range: 'Sheet1!A:C' // Adjust if your sheet/tab name differs
+        });
+        const rows = res.data.values || [];
+        if (rows.length <= 1) return;
+
+        const agents = (await db.query('SELECT id FROM agents')).rows;
+        const existingLeads = (await db.query('SELECT name, email, phone FROM leads')).rows;
+
+        for (const row of rows.slice(1)) {
+            const [name, email, phone] = row;
+            if (!name) continue;
+
+            const exists = existingLeads.some(lead => 
+                lead.name === name && lead.email === email && lead.phone === phone
+            );
+            if (!exists) {
+                lastAgentIndex = (lastAgentIndex + 1) % agents.length;
+                const agentId = agents[lastAgentIndex].id;
+                const leadResult = await db.query(
+                    'INSERT INTO leads (name, email, phone, status, agent_id) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+                    [name, email, phone, 'New', agentId]
+                );
+                const leadId = leadResult.rows[0].id;
+                await db.query(
+                    'INSERT INTO tasks (lead_id, description, due_date) VALUES ($1, $2, $3)',
+                    [leadId, `Contact ${name}`, new Date().toISOString().split('T')[0]]
+                );
+                console.log(`Imported lead: ${name} assigned to agent ${agentId}`);
+            }
+        }
+    } catch (err) {
+        console.error('Error pulling leads from Google Sheets:', err.message);
+    }
+}
+
+// Pull on startup and every 30 seconds
+pullLeadsFromSheets();
+setInterval(pullLeadsFromSheets, 30 * 1000);
 
 app.get('/', (req, res) => res.send('Welcome to your CRM!'));
 
@@ -64,35 +116,94 @@ app.delete('/api/leads/:id', async (req, res) => {
 
 app.get('/api/leads/export', async (req, res) => {
     const result = await db.query('SELECT l.*, a.name as agent_name FROM leads l LEFT JOIN agents a ON l.agent_id = a.id');
-    const csv = [
-        'ID,Name,Email,Phone,Status,Agent',
-        ...result.rows.map(row => `${row.id},${row.name},${row.email},${row.phone},${row.status},${row.agent_name}`)
-    ].join('\n');
-    res.header('Content-Type', 'text/csv');
-    res.attachment('leads.csv');
-    res.send(csv);
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Leads');
+
+    worksheet.columns = [
+        { header: 'ID', key: 'id', width: 10 },
+        { header: 'Name', key: 'name', width: 20 },
+        { header: 'Email', key: 'email', width: 30 },
+        { header: 'Phone', key: 'phone', width: 15 },
+        { header: 'Status', key: 'status', width: 15 },
+        { header: 'Agent', key: 'agent_name', width: 20 }
+    ];
+
+    worksheet.addRows(result.rows);
+
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4CAF50' } };
+    worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+    worksheet.columns.forEach(column => {
+        column.width = column.width || 10;
+    });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=leads.xlsx');
+    await workbook.xlsx.write(res);
+    res.end();
 });
 
 app.get('/api/converted/export', async (req, res) => {
     const result = await db.query('SELECT c.*, a.name as agent_name FROM converted_leads c JOIN agents a ON c.agent_id = a.id');
-    const csv = [
-        'ID,Lead ID,Name,Email,Phone,Agent,Converted Date',
-        ...result.rows.map(row => `${row.id},${row.lead_id},${row.name},${row.email},${row.phone},${row.agent_name},${row.converted_date}`)
-    ].join('\n');
-    res.header('Content-Type', 'text/csv');
-    res.attachment('converted_leads.csv');
-    res.send(csv);
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Converted Leads');
+
+    worksheet.columns = [
+        { header: 'ID', key: 'id', width: 10 },
+        { header: 'Lead ID', key: 'lead_id', width: 10 },
+        { header: 'Name', key: 'name', width: 20 },
+        { header: 'Email', key: 'email', width: 30 },
+        { header: 'Phone', key: 'phone', width: 15 },
+        { header: 'Agent', key: 'agent_name', width: 20 },
+        { header: 'Converted Date', key: 'converted_date', width: 20 }
+    ];
+
+    worksheet.addRows(result.rows);
+
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4CAF50' } };
+    worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+    worksheet.columns.forEach(column => {
+        column.width = column.width || 10;
+    });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=converted_leads.xlsx');
+    await workbook.xlsx.write(res);
+    res.end();
 });
 
 app.get('/api/unconverted/export', async (req, res) => {
     const result = await db.query('SELECT u.*, a.name as agent_name FROM unconverted_leads u JOIN agents a ON u.agent_id = a.id');
-    const csv = [
-        'ID,Lead ID,Name,Email,Phone,Agent,Contacted Date',
-        ...result.rows.map(row => `${row.id},${row.lead_id},${row.name},${row.email},${row.phone},${row.agent_name},${row.contacted_date}`)
-    ].join('\n');
-    res.header('Content-Type', 'text/csv');
-    res.attachment('unconverted_leads.csv');
-    res.send(csv);
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Unconverted Leads');
+
+    worksheet.columns = [
+        { header: 'ID', key: 'id', width: 10 },
+        { header: 'Lead ID', key: 'lead_id', width: 10 },
+        { header: 'Name', key: 'name', width: 20 },
+        { header: 'Email', key: 'email', width: 30 },
+        { header: 'Phone', key: 'phone', width: 15 },
+        { header: 'Agent', key: 'agent_name', width: 20 },
+        { header: 'Contacted Date', key: 'contacted_date', width: 20 }
+    ];
+
+    worksheet.addRows(result.rows);
+
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4CAF50' } };
+    worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+    worksheet.columns.forEach(column => {
+        column.width = column.width || 10;
+    });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=unconverted_leads.xlsx');
+    await workbook.xlsx.write(res);
+    res.end();
 });
 
 app.get('/api/leads/:id/tasks', async (req, res) => {
