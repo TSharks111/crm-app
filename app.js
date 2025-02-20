@@ -9,7 +9,7 @@ const port = 3000;
 
 app.use(express.static('public'));
 app.use(basicAuth({
-    users: { 'LHCS2025': '123456' }, // Username: agent, Password: password123 (change this!)
+    users: { 'LHCS2025': 'CallCenter2025!' }, // Username: LHCS2025, Password: password123 (change this!)
     challenge: true,
     unauthorizedResponse: 'Unauthorized - Please log in'
 }));
