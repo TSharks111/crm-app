@@ -2,10 +2,17 @@ const express = require('express');
 const { google } = require('googleapis');
 const db = require('./db');
 const ExcelJS = require('exceljs');
+const basicAuth = require('express-basic-auth'); // Add this
 const app = express();
 const port = 3000;
 
 app.use(express.static('public'));
+app.use(basicAuth({
+    users: { 'LHCS2025': '123456' }, // Username: agent, Password: password123 (change this!)
+    challenge: true,
+    unauthorizedResponse: 'Unauthorized - Please log in'
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
