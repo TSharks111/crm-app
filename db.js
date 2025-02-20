@@ -1,85 +1,71 @@
-const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('./leads.db', (err) => {
-    if (err) {
-        console.error('Database connection error:', err.message);
-    } else {
-        console.log('Connected to SQLite database.');
+const { Pool } = require('pg');
+
+// Use Render's internal URL (replace with your actual URL)
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || 'postgres://user:password@host:port/dbname',
+    ssl: { rejectUnauthorized: false } // Required for Render
+});
+
+pool.connect((err) => {
+    if (err) console.error('Database connection error:', err.message);
+    else console.log('Connected to PostgreSQL database.');
+});
+
+// Initialize tables
+pool.query(`
+    CREATE TABLE IF NOT EXISTS agents (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS leads (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT,
+        phone TEXT,
+        status TEXT DEFAULT 'New',
+        agent_id INTEGER REFERENCES agents(id)
+    );
+    CREATE TABLE IF NOT EXISTS tasks (
+        id SERIAL PRIMARY KEY,
+        lead_id INTEGER REFERENCES leads(id),
+        description TEXT,
+        due_date TEXT,
+        outcome TEXT DEFAULT 'Pending'
+    );
+    CREATE TABLE IF NOT EXISTS converted_leads (
+        id SERIAL PRIMARY KEY,
+        lead_id INTEGER REFERENCES leads(id),
+        name TEXT,
+        email TEXT,
+        phone TEXT,
+        agent_id INTEGER REFERENCES agents(id),
+        converted_date TEXT
+    );
+    CREATE TABLE IF NOT EXISTS unconverted_leads (
+        id SERIAL PRIMARY KEY,
+        lead_id INTEGER REFERENCES leads(id),
+        name TEXT,
+        email TEXT,
+        phone TEXT,
+        agent_id INTEGER REFERENCES agents(id),
+        contacted_date TEXT
+    );
+`, (err) => {
+    if (err) console.error('Error creating tables:', err.message);
+    else console.log('Tables created or already exist');
+});
+
+// Seed agents if empty
+pool.query('SELECT COUNT(*) FROM agents', (err, res) => {
+    if (err) console.error('Error checking agents:', err.message);
+    else if (parseInt(res.rows[0].count) === 0) {
+        pool.query(`
+            INSERT INTO agents (name) VALUES ('Agent 1'), ('Agent 2'), ('Agent 3');
+        `, (err) => {
+            if (err) console.error('Error seeding agents:', err.message);
+            else console.log('Seeded initial agents');
+        });
     }
 });
 
-db.serialize(() => {
-    db.run(`
-        CREATE TABLE IF NOT EXISTS agents (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL
-        )
-    `, (err) => {
-        if (err) console.error('Error creating agents table:', err.message);
-        else console.log('Agents table created or already exists');
-    });
-
-    db.run(`
-        CREATE TABLE IF NOT EXISTS leads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT,
-            phone TEXT,
-            status TEXT DEFAULT 'New',
-            agent_id INTEGER,
-            FOREIGN KEY (agent_id) REFERENCES agents(id)
-        )
-    `, (err) => {
-        if (err) console.error('Error creating leads table:', err.message);
-        else console.log('Leads table created or already exists');
-    });
-
-    db.run(`
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            lead_id INTEGER,
-            description TEXT,
-            due_date TEXT,
-            outcome TEXT DEFAULT 'Pending',
-            FOREIGN KEY (lead_id) REFERENCES leads(id)
-        )
-    `, (err) => {
-        if (err) console.error('Error creating tasks table:', err.message);
-        else console.log('Tasks table created or already exists');
-    });
-
-    db.run(`
-        CREATE TABLE IF NOT EXISTS converted_leads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            lead_id INTEGER,
-            name TEXT,
-            email TEXT,
-            phone TEXT,
-            agent_id INTEGER,
-            converted_date TEXT,
-            FOREIGN KEY (lead_id) REFERENCES leads(id),
-            FOREIGN KEY (agent_id) REFERENCES agents(id)
-        )
-    `, (err) => {
-        if (err) console.error('Error creating converted_leads table:', err.message);
-        else console.log('Converted_leads table created or already exists');
-    });
-
-    db.run(`
-        CREATE TABLE IF NOT EXISTS unconverted_leads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            lead_id INTEGER,
-            name TEXT,
-            email TEXT,
-            phone TEXT,
-            agent_id INTEGER,
-            contacted_date TEXT,
-            FOREIGN KEY (lead_id) REFERENCES leads(id),
-            FOREIGN KEY (agent_id) REFERENCES agents(id)
-        )
-    `, (err) => {
-        if (err) console.error('Error creating unconverted_leads table:', err.message);
-        else console.log('Unconverted_leads table created or already exists');
-    });
-});
-
-module.exports = db;
+module.exports = pool;
